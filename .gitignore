@@ -1,0 +1,51 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Environment variables / secrets
+.env
+*.env
+
+# VSCode settings
+.vscode/
+
+# Mac & Windows system files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Pytest cache
+.pytest_cache/
+
+# MyPy
+.mypy_cache/
+
+# Coverage reports
+htmlcov/
+.coverage
+coverage.xml
+
+# Pydantic compiled files
+*.pyd
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Migration files (optional if auto-generated and temporary)
+migrations/
+
+# DB files
+*.sqlite3
+
+# Node projects (if any frontend here)
+node_modules/
+dist/
+build/
