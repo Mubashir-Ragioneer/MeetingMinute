@@ -1,3 +1,5 @@
+# /app/services/storage.py
+
 import os
 from typing import Union
 from pathlib import Path
@@ -17,3 +19,4 @@ def save_file(user_id: str, meeting_id: str, artifact_type: str, file_name: str,
 
 def get_file_path(user_id: str, meeting_id: str, artifact_type: str, file_name: str) -> str:
     return str(BASE_PATH / user_id / meeting_id / artifact_type / file_name)
+

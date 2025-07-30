@@ -1,4 +1,4 @@
-# backend/app/api/bot.py
+# app/api/teams_bot.py
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Path
 from pydantic import BaseModel
@@ -6,47 +6,25 @@ import os
 import subprocess
 import uuid
 import sys
-import threading
-from app.services.job_manager import job_manager
-from app.models.job import Job
 from datetime import datetime
 import pytz
-import asyncio
+from app.services.job_manager import job_manager
+from app.models.job import Job
 from app.services.transcribe import transcribe_audio
-router = APIRouter(prefix="/bot", tags=["bot"])
 
-class BotJobRequest(BaseModel):
+router = APIRouter(prefix="/teamsbot", tags=["TeamsBot"])
+
+class TeamsBotJobRequest(BaseModel):
     email: str
     meeting_url: str
     duration: int = 120
     interval: int = 10
-    save_dir: str = "screenshots"
+    save_dir: str = "storage"
     window_width: int = 1280
     window_height: int = 720
     leave_if_empty_secs: int = 30
-    start_time: str = None
-
-def set_job_status(job_id, update_fields):
-    import asyncio
-    from app.models.job import Job
-    async def _do_update():
-        job = await Job.find_one(Job.job_id == job_id)
-        if job:
-            await job.update({"$set": update_fields})
-    asyncio.run(_do_update())
-
-def monitor_process(job_id, proc):
-    """Monitor process in a separate thread and update DB when done."""
-    proc.wait()
-    status = "finished" if proc.returncode == 0 else "error"
-    import asyncio
-    from app.models.job import Job
-    from datetime import datetime
-    async def update_status():
-        await Job.find_one(Job.job_id == job_id).update({
-            "$set": {"status": status, "finished_at": datetime.utcnow()}
-        })
-    asyncio.run(update_status())
+    start_time: str = "2025-07-28T14:02:08+05:00"
+    headless: bool = True
 
 def find_audio_file(root_dir):
     for dirpath, _, filenames in os.walk(root_dir):
@@ -55,7 +33,7 @@ def find_audio_file(root_dir):
                 return os.path.join(dirpath, filename)
     return None
 
-def run_meeting_bot_threaded(
+def run_teams_bot_threaded(
     email: str,
     meeting_url: str,
     duration: int,
@@ -65,16 +43,16 @@ def run_meeting_bot_threaded(
     window_height: int,
     leave_if_empty_secs: int,
     start_time: str,
-    job_id: str
+    job_id: str,
+    headless: bool = True,
 ):
-
-    bot_script = os.path.join(os.path.dirname(__file__), "../services/bot_runner.py")
+    # Path to your bot runner script
+    bot_script = os.path.join(os.path.dirname(__file__), "../services/teams_bot_runner.py")
     out_dir = os.path.abspath(os.path.join(save_dir, f"meeting_{job_id}"))
     os.makedirs(out_dir, exist_ok=True)
 
     cmd = [
         sys.executable, bot_script,
-        "--email", email,
         "--meeting_url", meeting_url,
         "--duration", str(duration),
         "--interval", str(interval),
@@ -82,7 +60,9 @@ def run_meeting_bot_threaded(
         "--window_width", str(window_width),
         "--window_height", str(window_height),
         "--leave_if_empty_secs", str(leave_if_empty_secs),
+        "--headless", str(headless).lower(),
     ]
+
     if start_time:
         cmd += ["--start_time", start_time]
 
@@ -93,8 +73,6 @@ def run_meeting_bot_threaded(
     status = "finished" if proc.returncode == 0 else "error"
     transcript = None
 
-    # After recording, try to find audio file and transcribe it
-        # After recording, try to find audio file (recursive) and transcribe it
     try:
         audio_path = find_audio_file(out_dir)
         if audio_path:
@@ -115,13 +93,11 @@ def run_meeting_bot_threaded(
                     "transcript": transcript
                 }
             })
-        # this will schedule _update on the main FastAPI event loop
         anyio.from_thread.run(_update)
     update_status_and_transcript_sync()
-    # You may log here, but not DB.
 
-@router.post("/start", summary="Start a meeting bot job")
-async def start_meeting_bot(req: BotJobRequest, background_tasks: BackgroundTasks):
+@router.post("/start", summary="Start a Teams bot job")
+async def start_teams_bot(req: TeamsBotJobRequest, background_tasks: BackgroundTasks):
     job_id = uuid.uuid4().hex
     out_dir = os.path.abspath(os.path.join(req.save_dir, f"meeting_{job_id}"))
     if req.start_time:
@@ -131,6 +107,7 @@ async def start_meeting_bot(req: BotJobRequest, background_tasks: BackgroundTask
         now_utc = datetime.utcnow().replace(tzinfo=pytz.UTC)
         if start_dt.astimezone(pytz.UTC) < now_utc:
             raise HTTPException(status_code=400, detail="Scheduled time is in the past")
+
     # Insert job record with status "pending"
     job = Job(
         job_id=job_id,
@@ -142,13 +119,13 @@ async def start_meeting_bot(req: BotJobRequest, background_tasks: BackgroundTask
     )
     await job.insert()
 
-    # Set job status to "running" NOW (in main thread/loop)
+    # Set job status to "running"
     await Job.find_one(Job.job_id == job_id).update(
         {"$set": {"status": "running", "started_at": datetime.utcnow()}}
     )
 
     background_tasks.add_task(
-        run_meeting_bot_threaded,
+        run_teams_bot_threaded,
         req.email,
         req.meeting_url,
         req.duration,
@@ -159,11 +136,12 @@ async def start_meeting_bot(req: BotJobRequest, background_tasks: BackgroundTask
         req.leave_if_empty_secs,
         req.start_time,
         job_id,
+        req.headless,
     )
-    return {"message": "Bot started in background", "job_id": job_id}
+    return {"message": "Teams bot started in background", "job_id": job_id}
 
-@router.post("/cancel/{job_id}", summary="Cancel a scheduled meeting bot job")
-async def cancel_meeting_bot(job_id: str = Path(..., description="Job ID returned by /bot/start")):
+@router.post("/cancel/{job_id}", summary="Cancel a scheduled Teams bot job")
+async def cancel_teams_bot(job_id: str = Path(..., description="Job ID returned by /teamsbot/start")):
     result = job_manager.cancel(job_id)
     if result:
         await Job.find_one(Job.job_id == job_id).update({
@@ -172,15 +150,15 @@ async def cancel_meeting_bot(job_id: str = Path(..., description="Job ID returne
         return {"message": f"Job {job_id} cancelled"}
     raise HTTPException(status_code=404, detail="Job not found or already finished")
 
-@router.get("/status/{job_id}", summary="Get status of a scheduled job")
-async def job_status(job_id: str):
+@router.get("/status/{job_id}", summary="Get status of a scheduled Teams bot job")
+async def teams_bot_status(job_id: str):
     job = await Job.find_one(Job.job_id == job_id)
     if not job:
         return {"job_id": job_id, "status": "not_found"}
     return {"job_id": job_id, "status": job.status}
 
-@router.get("/list", summary="List all jobs")
-async def list_jobs():
+@router.get("/list", summary="List all Teams bot jobs")
+async def list_teams_jobs():
     jobs = await Job.find_all().to_list()
     return [
         {
@@ -189,13 +167,13 @@ async def list_jobs():
             "email": j.email,
             "meeting_url": j.meeting_url,
             "save_dir": j.save_dir,
-            "transcript": j.transcript
+            "transcript": getattr(j, "transcript", None)
         }
         for j in jobs
     ]
 
-@router.get("/info/{job_id}", summary="Get all details of a job by job_id")
-async def get_job_info(job_id: str):
+@router.get("/info/{job_id}", summary="Get all details of a Teams bot job")
+async def get_teams_job_info(job_id: str):
     job = await Job.find_one(Job.job_id == job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")

@@ -1,3 +1,5 @@
+# app/models/job.py
+
 from beanie import Document, Link
 from typing import Optional
 from datetime import datetime
@@ -13,7 +15,6 @@ class Job(Document):
     params: Optional[dict] = None  
     save_dir: str  
     transcript: Optional[str] = None
-
 
     class Settings:
         name = "jobs"

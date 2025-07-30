@@ -49,3 +49,9 @@ migrations/
 node_modules/
 dist/
 build/
+
+storage
+screenshots
+downloads
+chrome_ext
+google_auth.json

@@ -1,4 +1,4 @@
-# backend/app/services/job_manager.py
+# /app/services/job_manager.py
 
 class JobManager:
     def __init__(self):

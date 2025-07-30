@@ -1,4 +1,4 @@
-# backend/app/services/transcribe.py
+# /app/services/transcribe.py
 
 import openai
 import os
