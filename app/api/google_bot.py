@@ -24,7 +24,7 @@ class BotJobRequest(BaseModel):
     window_width: int = 1280
     window_height: int = 720
     leave_if_empty_secs: int = 30
-    start_time: str = "2025-07-28T14:02:08+05:00"
+    start_time: str = None
     headless: bool = True   
 
 
